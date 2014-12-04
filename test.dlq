@@ -1,0 +1,3 @@
+test.buildings.filter($b
+  $b.marketValue.lte(300000)
+)

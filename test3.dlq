@@ -1,0 +1,105 @@
+;test.people.filter{$father}(
+;  $father.gender.eq('male')
+;  $father.age.gte(32)
+;  $father.children.filter{$child}(
+;    test.people.filter{$mother}(
+;      $mother.languages.contains('SE')
+;      $mother.gender.eq('female')
+;      $mother.children.contains($child)
+;    )
+;  )
+;)
+;{
+;  $father [*]
+;  $child [name]
+;}
+;
+;
+; JS mockup of above (without clear projection)
+;test.people.filter(function($father) {
+;  return $father.gender === 'male' &&
+;  $father.age >= 32 &&
+;  $father.children.filter(function($child) {
+;    return test.people.filter(function($mother) {
+;      ~return $mother.languages.indexOf('SE') &&
+;      $mother.gender === 'female' &&
+;      ~$mother.children.indexOf($child);
+;    });
+;  });
+;}).project(function($parent) {
+;  return $parent;
+;});
+
+
+;;test.people{father}.filter(
+;;  father.gender.eq('male')
+;;  father.age.gte(32)
+;;  father.children{test.people child idx}.filter(
+;;    idx.mod(2)
+;;    test.people{mother}.filter(
+;;      mother.languages.contains('swedish')
+;;      mother.gender.eq('female')
+;;      mother.children{test.people}.contains(child)
+;;    )
+;;  )
+;;)
+
+;;defn(
+;;  join-child(child idx)
+;;  test.people{p}.$filter(
+;;    child.$eq(p.name)
+;;  )
+;;)
+;;
+;;test.people{father}.$filter(
+;;  father.gender.$eq('male')
+;;  father.children.$map(join-child){child}.$filter(
+;;    child.age.$gte(18)
+;;    test.people{mother}.$filter(
+;;      mother.$neq(father)
+;;      mother.children.$contains(child.name)
+;;    )
+;;  )
+;;)
+;;
+;;test.people{person}.$filter(
+;;  person.gender.$eq('male')
+;;){male}.filter(
+;;  male.children.$map(join-child){child}.$filter(
+;;    child.age.$gte(18)
+;;    test.people{person2}.$filter(
+;;      person2.$neq(male)
+;;      person2.children.$contains(child.name)
+;;    )
+;;  )
+;;)
+
+
+;; you have a collection of people, and you're looking for the children of all father older than 30 and all mothers who speak swedish
+
+;; simple case: get all people who are children
+
+test.people{person}.$filter(
+  person.children{child}
+){parent}.$map(parent.children).$concat
+
+;; or simpler
+
+test.people{person}.$map(person.children).$concat
+
+;; which only returns the names or ids (foreign keys), so to get the children as documents....
+
+test.people{person}.$map(
+  person.children{child}.$map(
+    test.people{p}.$filter(child.$eq(p.name))
+  ).$concat
+).$concat
+
+test.people{person}.$map
+
+nil
+
+
+
+
+

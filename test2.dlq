@@ -1,0 +1,27 @@
+test.buildings.filter($b
+  $b.marketValue.lte(300000)
+  $b.address($a).optional
+  $b.leases.filter($l
+    or(
+      $l.tenants.all($t
+        $t.name($n).suffixes.map($s).count.gt(1)
+      )
+      $l.escalation.increase.gt(0.05)
+    )
+  )
+).project(
+  $b [***]
+  $l [tenants $l.assoc("group or individual?" $l.tenants.count.gt(1).if("group" "individual"))]
+)
+
+test.people.filter($father
+  $father.gender.eq('male')
+  $father.age.gte(32)
+  $father.children.filter($child
+    test.people.filter($mother
+      $mother.languages.in('SE')
+      $mother.gender.eq('female')
+      $mother.children($child)
+    )
+  )
+)
