@@ -1,4 +1,6 @@
 *.swp
 *.swo
 
-**/*/dlq
+dlq
+dlq.debug
+a.out

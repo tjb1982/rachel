@@ -79,27 +79,57 @@
 
 ;; simple case: get all people who are children
 
-test.people{person}.$filter(
-  person.children{child}
-){parent}.$map(parent.children).$concat
+;;test.people{person}.$filter(
+;;  person.children{child}
+;;){parent}.$map(parent.children).$concat
+;;
+;;;; or simpler
+;;
+;;test.people{person}.$map(person.children).$concat
+;;
+;;;; which only returns the names or ids (foreign keys), so to get the children as documents....
+;;
+;;test.people{person}.$map(
+;;  person.children{child}.$map(
+;;    test.people{p}.$filter(child.$eq(p.name))
+;;  ).$concat
+;;).$concat
+;;
+;;
+;;test.people{person}.$map(
+;;  person.children{child test.people{p}.$filter(
+;;).$concat
 
-;; or simpler
+;;test.people{person}.$filter(
+;;  person.children
+;;){parent}.$map(parent.children)
+;;
+;;$map(
+;;  $filter(
+;;    people(test){person}
+;;    children(person)
+;;  ){parent}
+;;  children(parent)
+;;)
+;;
+;;(map
+;;  (filter
+;;    (people test)
+;;    (fn [person] children(person)))
+;;  (fn [parent] (children parent)))
 
-test.people{person}.$map(person.children).$concat
+$map(
+  $filter(
+    people(test)
+    fn([person] children(person))
+  )
+  fn([parent] children(parent))
+)
 
-;; which only returns the names or ids (foreign keys), so to get the children as documents....
-
-test.people{person}.$map(
-  person.children{child}.$map(
-    test.people{p}.$filter(child.$eq(p.name))
-  ).$concat
-).$concat
-
-test.people{person}.$map
-
-nil
-
-
-
+test.people.$filter(
+  fn([person] person.children)
+).$map(
+  fn([parent] parent.children)
+).$cat
 
 

@@ -1,0 +1,8 @@
+;;test.buildings.$map(
+;;  @.marketValue
+;;).$reduce($sum)
+
+;test.people.$index(index-name name age eye-color)
+;test.people.$index(index-name)(@.name.$eq("Tom"))
+
+$filter((1, 2, 3) @.$eq(3))

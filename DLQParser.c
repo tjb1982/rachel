@@ -32,6 +32,8 @@ Token *
 prior_expression(Token *token)
 {
   int och = 0;
+  Token *ret = token;
+
   switch (*token->prev->token) {
   case '}':
     while (token->prev && *token->prev->token != '{')
@@ -46,13 +48,13 @@ prior_expression(Token *token)
         och++;
       else if (*token->token == '(')
         och--;
-      token = token->prev;
+      ret = (token = token->prev) ? token : ret;
     }
     break;
   default:
-    token = token->prev;
+    ret = (token = token->prev) ? token : ret;
   }
-  return token;
+  return ret;
 }
 
 void
