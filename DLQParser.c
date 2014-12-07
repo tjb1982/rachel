@@ -50,8 +50,8 @@ prior_expression(Token *token)
   case '}':
     while (token->prev && *token->prev->token != '{')
       token = token->prev;
-      return prior_expression(token->prev);
-      break;
+    return prior_expression(token->prev);
+    break;
   case ')':
     och = 1;
     token = token->prev->prev;
