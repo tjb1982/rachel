@@ -5,7 +5,13 @@
 #define bool int
 #define true 1
 #define false 0
-#define cases
+#define PUNCT '.': \
+    case '(': case ')': \
+    case '[': case ']': \
+    case '{': case '}'
+#define WHITESPACE ' ': \
+    case ',': case '\n': \
+    case '\r': case '\t'
 
 typedef struct Token {
   const char *token;
@@ -14,6 +20,12 @@ typedef struct Token {
   struct Token *next;
   struct Token *prev;
 } Token;
+
+void
+parser_error(const char *msg)
+{
+  fprintf(stderr, "Parser error: %s\n", msg);
+}
 
 void
 free_tokens (Token *tokens)
@@ -110,6 +122,18 @@ insert_tokens_after(Token *token, Token *after)
   return count;
 }
 
+bool
+is_numeric(char c)
+{
+  return c >= 0x30 && c <= 0x39;
+}
+
+bool
+is_float_dot(const char *dot, bool check_behind)
+{
+  return is_numeric(*(dot + 1)) || (check_behind && is_numeric(*(dot - 1)));
+}
+
 /**
  * Replace '.' notation with functional equivalent
  *
@@ -121,7 +145,19 @@ normalize(Token *tokens)
   int ins = 0;
 
   while (next) {
-    if (*next->token == '.') {
+    if (*next->token == '.' && next->toklen == 1) {
+
+      if (next == tokens || !next->next || *next->next->token == '.') {
+        /* 
+         * can't start query with '.';
+         * can't have hanging '.' at the end;
+         * can't have two '.'s in a row;
+         * */
+        free_tokens(tokens);
+        parser_error("illegal use of '.' token.");
+        return NULL;
+      }
+
       expression = prior_expression(next);
       remove = next;
       next = next->next;
@@ -153,8 +189,7 @@ count_syntactics(const char *ptr)
 
   while (*ptr != '\0') {
     switch (*ptr++) {
-    case '(': case ')': case '[': case ']':
-    case '{': case '}': case '.':
+    case PUNCT:
       syntactic_count++;
     default:
       break;
@@ -189,27 +224,25 @@ Token *
 tokenize(char *dest, const char *query)
 {
   int token_count = 0;
-  char c, *orig = dest;
+  bool stop = false;
+  const char *ret = dest, *orig = query;
 
   /* tokenize char[] by surrounding each token with '\0' and count the number of tokens */
   while (*query != '\0') {
+    stop = false;
     switch (*query) {
     case ';':
       /* comments */
       while(*(query++ +1) != '\n')
         ;
       break;
-    case '.':
+    case PUNCT:
       /* don't tokenize floats */
-      c = *(query + 1);
-      if (c >= 0x30 && c <= 0x39) {
+      if (*query == '.' && is_float_dot(query, orig != query)) {
         *dest++ = *query++;
         break;
       }
-    case '(': case ')':
-    case '[': case ']':
-    case '{': case '}':
-      if (*(dest -1) != '\0') {
+      if (*(dest - 1) != '\0') {
         *dest++ = '\0';
         token_count++;
       }
@@ -217,15 +250,20 @@ tokenize(char *dest, const char *query)
       *dest++ = '\0';
       token_count++;
       break;
-    case '\r':
-      break;
-    case ' ': case '\n': case ',':
+    case WHITESPACE:
       if (*(dest -1) != '\0') {
         *dest++ = '\0';
         token_count++;
       }
-      while (*query == ' ' || *query == '\n' || *query == ',') {
-        query++;
+      while (!stop) {
+        switch (*query) {
+        case WHITESPACE:
+          query++;
+          break;
+        default:
+          stop = true;
+          break;
+        }
       }
       break;
     default:
@@ -234,7 +272,7 @@ tokenize(char *dest, const char *query)
   }
   *dest = '\0';
 
-  return token_list(orig, token_count);
+  return token_list(ret, token_count);
 }
 
 int
