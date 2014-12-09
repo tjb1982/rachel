@@ -4,7 +4,7 @@
 
 ## everything is a function
 
-Even attributes are a function of instances, so that when the source code is normalized by the compiler
+Attributes also take a functional syntax, so that when the source code is normalized by the compiler
 
 ```java
 test.people
@@ -27,7 +27,7 @@ becomes
 people(test $gte(age(@) 30))
 ```
 
-and either form is acceptable.
+and either form is acceptable as source.
 
 Functional closures (e.g. for use with `$filter`, `$map`, `$reduce`, and `$fun` [below]) can be expressed in three ways:
 
@@ -44,38 +44,15 @@ coll.$filter([item idx] idx.$mod(2).$when(item.foo))
 coll.$filter(@1.$mod(2).$when(@.foo))
 ```
 
-### more examples
-
 ```java
 $so-much.$fun($sum)
 $so-much.$fun([arg1 arg2] $sum(arg1 arg2))
-$so-much.$fun($sum(@ @1))
+$so-much.$fun($sum(@ @1 @2 @3))
+test.buildings.$map(@.marketValue.$times(@.appreciationRate)).$reduce($sum)
 ```
 
 
 ## find with $filter
-
-Let's say you have a collection of people. Some people have children, who are other people in the same collection.
-
-```javascript
-
-test.people = [{
-  name: "Tom",
-  surname: "Brennan",
-  age: 32
-},{
-  name: "Will",
-  surname: "Wilson",
-  gender: "male",
-  age: 27,
-  children: ["Theodora"]
-}, {
-  name: "Theodora"
-}, {
-  children: ["Theodora"],
-  gender: "female"
-}]
-```
 
 A simple find looks like this
 
@@ -97,10 +74,7 @@ test.people(name)
 test.people([person]
   person.age.gte(30)
 )
-```
-### `@` argument alias
 
-```java
 test.people(@.age.gte(30))
 ```
 
