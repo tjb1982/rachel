@@ -191,10 +191,12 @@ db.people.find({
     $not: {$size: 0}
   }
 }, {
-  children: {
+  children: {              // overwrite
     $deref: {
-      $coll: "test.people", // defaults to current db, collection as fieldname (e.g., "test.children")
-      $from: "children",    // defaults to top parent key (e.g., "children")
+      $coll: "test.people",
+      $from: {
+        $each: "children"
+      },
       $to: "name"           // defaults to "_id"
     }
   }
