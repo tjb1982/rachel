@@ -8,6 +8,24 @@ die_parser_error(const char *msg, Token *token)
   exit(1);
 }
 
+int
+assert_matching_char(const char *query, Token *token, size_t *toklen, char c)
+{
+  int tl = *toklen;
+  if (*query == c) {
+    query++; tl++;
+    while (*query != c) {
+      if (*query == '\0') {
+        return 1;
+      }
+      tl++; query++;
+    }
+    token->toklen = ++tl;
+    *toklen = 0;
+  }
+  return 0;
+}
+
 Token *
 prior_expression(Token *token)
 {
@@ -159,6 +177,14 @@ normalize(Token *tokens)
          * can't have hanging '.' at the end;
          * can't have two '.'s in a row;
          * */
+        Token *bad = next;
+        char *t; int i = 10;
+        while(i-- && bad->prev) bad = next->prev;
+        i = 10;
+        while (i-- && bad != next) {
+          size_t toklen = bad->toklen;
+          while (toklen--) write (2, bad->token++, 1);
+        }
         die_parser_error("illegal use of '.' token.", tokens);
       }
 
@@ -188,7 +214,7 @@ normalize(Token *tokens)
 Token *
 tokenize(const char *query)
 {
-  int toklen = 0;
+  size_t toklen = 0;
   bool stop = false;
   Token *first, *prev, *token;
   const char *orig = query;
@@ -205,7 +231,7 @@ tokenize(const char *query)
     switch (*query) {
     case ';':
       /* comments */
-      while(*(query++ +1) != '\n')
+      while(*(query++ +1) != '\n' && *query != '\0')
         ;
       break;
     case PUNCT:
@@ -240,17 +266,10 @@ tokenize(const char *query)
         token = inc_token(token);
         token->token = query;
       }
-      if (*query == '"') {
-        query++; toklen++;
-        while (*query != '"') {
-          if (*query == '\0') {
-            die_parser_error("Unmatched quotes", first);
-          }
-          toklen++; query++;
-        }
-        token->toklen = ++toklen;
-        toklen = 0;
-      }
+      if (assert_matching_char(query, token, &toklen, '"'))
+        die_parser_error("Assertion error: Unmatched char (\")", first);
+      if (assert_matching_char(query, token, &toklen, '\''))
+        die_parser_error("Assertion error: Unmatched char (')", first);
       toklen++; query++;
     }
   }
