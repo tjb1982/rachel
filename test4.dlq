@@ -1,1 +1,0 @@
-test.buildings.$index("buildings-by-age-and-tenants")(@.age.lte(5)).$join(test.people, tenants, name)

@@ -1,43 +1,11 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#define bool int
-#define true 1
-#define false 0
-#define PUNCT '.': \
-    case '(': case ')': \
-    case '[': case ']': \
-    case '{': case '}'
-#define WHITESPACE ' ': \
-    case ',': case '\n': \
-    case '\r': case '\t'
-
-typedef struct Token {
-  const char *token;
-  int toklen;
-  bool managed;
-  struct Token *next;
-  struct Token *prev;
-} Token;
+#include "DLQParser.h"
 
 void
-parser_error(const char *msg)
+die_parser_error(const char *msg, Token *token)
 {
+  free_tokens(token);
   fprintf(stderr, "Parser error: %s\n", msg);
-}
-
-void
-free_tokens (Token *tokens)
-{
-  Token *prev;
-  while (tokens) {
-    if (tokens->managed == true)
-      free((void *)tokens->token);
-    prev = tokens;
-    tokens = tokens->next;
-    free(prev);
-  }
+  exit(1);
 }
 
 Token *
@@ -50,8 +18,7 @@ prior_expression(Token *token)
   case '}':
     while (token->prev && *token->prev->token != '{')
       token = token->prev;
-      return prior_expression(token->prev);
-      break;
+    return prior_expression(token->prev);
   case ')':
     och = 1;
     token = token->prev->prev;
@@ -75,17 +42,47 @@ unlink_token(Token *token)
   token->next->prev = 
   token->prev->next = NULL;
   token->next = token->prev = NULL;
-  free_tokens(token);
 }
 
 Token *
 new_token()
 {
-  Token *token = malloc(sizeof(Token));
-  token->token = NULL;
-  token->toklen = 0;
-  token->managed = false;
-  token->next = token->prev = NULL;
+  if (numTokens == BUFFSIZE * multiplier) {
+    tptr = allocs[numAllocs++] = malloc(sizeof(Token) * BUFFSIZE * ++multiplier);
+    numTokens = 0;
+  }
+  tptr->token = NULL;
+  tptr->toklen = 0;
+  tptr->managed = false;
+  tptr->next = tptr->prev = NULL;
+
+  numTokens++;
+
+  return tptr++;
+}
+
+void
+free_tokens (Token *tokens)
+{
+  Token *prev;
+  while (tokens) {
+    if (tokens->managed == true)
+      free((void *)tokens->token);
+    tokens = tokens->next;
+  }
+  while (numAllocs--) {
+    free(allocs[numAllocs]);
+  }
+}
+
+Token *
+inc_token(Token *token)
+{
+  Token *prev = token;
+  token->next = new_token();
+  token = token->next;
+  token->prev = prev;
+
   return token;
 }
 
@@ -94,10 +91,22 @@ token_from_string(const char *str)
 {
   Token *token = new_token();
   size_t toklen = strlen(str);
-  char *t = malloc(sizeof(char) * toklen + 1);
-  memcpy(t, str, toklen); t[toklen] = '\0';
+  char *t = malloc(sizeof(char) * toklen);
+  memcpy(t, str, toklen);
   token->token = t;
   token->toklen = toklen;
+  token->managed = true;
+  return token;
+}
+
+Token *
+token_from_char(char c)
+{
+  Token *token = new_token();
+  char *t = malloc(sizeof(char));
+  *t = c;
+  token->token = t;
+  token->toklen = 1;
   token->managed = true;
   return token;
 }
@@ -110,6 +119,7 @@ insert_tokens_after(Token *token, Token *after)
 
   next = token->next;
   end = after;
+  
   while (end->next) {
     end = end->next;
     count++;
@@ -134,10 +144,6 @@ is_float_dot(const char *dot, bool check_behind)
   return is_numeric(*(dot + 1)) || (check_behind && is_numeric(*(dot - 1)));
 }
 
-/**
- * Replace '.' notation with functional equivalent
- *
- **/
 Token *
 normalize(Token *tokens)
 {
@@ -153,9 +159,7 @@ normalize(Token *tokens)
          * can't have hanging '.' at the end;
          * can't have two '.'s in a row;
          * */
-        free_tokens(tokens);
-        parser_error("illegal use of '.' token.");
-        return NULL;
+        die_parser_error("illegal use of '.' token.", tokens);
       }
 
       expression = prior_expression(next);
@@ -170,64 +174,32 @@ normalize(Token *tokens)
         insert_tokens_after(next->next, expression);
       }
       else {
-        insert_tokens_after(next, token_from_string("("));
+        insert_tokens_after(next, token_from_char('('));
         ins = insert_tokens_after(next->next, expression);
         while (--ins) expression = expression->next;
-        insert_tokens_after(expression, token_from_string(")"));
+        insert_tokens_after(expression, token_from_char(')'));
       }
-
     }
     else next = next->next;
   }
   return tokens;
 }
 
-int
-count_syntactics(const char *ptr)
-{
-  int syntactic_count = 0;
-
-  while (*ptr != '\0') {
-    switch (*ptr++) {
-    case PUNCT:
-      syntactic_count++;
-    default:
-      break;
-    }
-  }
-  return syntactic_count;
-}
-
 Token *
-token_list(const char *eptr, int token_count)
+tokenize(const char *query)
 {
-  Token *token, *prev, *orig = token = new_token();
   int toklen = 0;
-
-  while (token_count--) {
-    toklen = strlen (eptr);
-    token->token = eptr;
-    token->toklen = toklen;
-    if (token_count) {
-      token->next = new_token();
-      prev = token;
-      token = token->next;
-      token->prev = prev;
-    }
-    else token->next = NULL;
-    eptr += toklen + 1;
-  }
-  return orig;
-}
-
-Token *
-tokenize(char *dest, const char *query)
-{
-  int token_count = 0;
   bool stop = false;
-  const char *ret = dest, *orig = query;
+  Token *first, *prev, *token;
+  const char *orig = query;
 
-  /* tokenize char[] by surrounding each token with '\0' and count the number of tokens */
+  allocs[numAllocs++] = tptr = malloc(sizeof(Token) * BUFFSIZE * multiplier);
+  token = first = new_token();
+
+  token->token = query;
+
+  /* tokenize char[] by creating Tokens whose token->token point to the start of
+   * each token and provide the length in token->toklen. THESE ARE NOT "C STRINGS" */
   while (*query != '\0') {
     stop = false;
     switch (*query) {
@@ -239,25 +211,22 @@ tokenize(char *dest, const char *query)
     case PUNCT:
       /* don't tokenize floats */
       if (*query == '.' && is_float_dot(query, orig != query)) {
-        *dest++ = *query++;
+        query++; toklen++;
         break;
       }
-      if (*(dest - 1) != '\0') {
-        *dest++ = '\0';
-        token_count++;
-      }
-      *dest++ = *query++;
-      *dest++ = '\0';
-      token_count++;
+      if (!token->toklen) token->toklen = toklen;
+
+      token = inc_token(token);
+      token->token = query++;
+      token->toklen = 1;
+
+      toklen = 0;
       break;
-    case WHITESPACE:
-      if (*(dest -1) != '\0') {
-        *dest++ = '\0';
-        token_count++;
-      }
+    case SPACE:
+      if (!token->toklen) token->toklen = toklen; toklen = 0;
       while (!stop) {
         switch (*query) {
-        case WHITESPACE:
+        case SPACE:
           query++;
           break;
         default:
@@ -267,12 +236,55 @@ tokenize(char *dest, const char *query)
       }
       break;
     default:
-      *dest++ = *query++;
+      if (token->toklen) {
+        token = inc_token(token);
+        token->token = query;
+      }
+      if (*query == '"') {
+        query++; toklen++;
+        while (*query != '"') {
+          if (*query == '\0') {
+            die_parser_error("Unmatched quotes", first);
+          }
+          toklen++; query++;
+        }
+        token->toklen = ++toklen;
+        toklen = 0;
+      }
+      toklen++; query++;
     }
   }
-  *dest = '\0';
+  if (!token->toklen) token->toklen = toklen;
 
-  return token_list(ret, token_count);
+  return first; 
+}
+
+size_t
+getSizeOfInput(FILE *input){
+   size_t retvalue = 0;
+   char c;
+
+   if (input != stdin) {
+      if (-1 == fseek(input, 0L, SEEK_END)) {
+         fprintf(stderr, "Error seek end: %s\n", strerror(errno));
+         exit(EXIT_FAILURE);
+      }
+      if (-1 == (retvalue = ftell(input))) {
+         fprintf(stderr, "ftell failed: %s\n", strerror(errno));
+         exit(EXIT_FAILURE);
+      }
+      if (-1 == fseek(input, 0L, SEEK_SET)) {
+         fprintf(stderr, "Error seek start: %s\n", strerror(errno));
+         exit(EXIT_FAILURE);
+      }
+   } else {
+      /* for stdin, we need to read in the entire stream until EOF */
+      while (EOF != (c = fgetc(input))) {
+         retvalue++;
+      }
+   }
+
+   return retvalue;
 }
 
 int
@@ -280,11 +292,35 @@ main (int argc, char *argv []) {
   /* copy contents of file into buffer "contents" */
   char *contents;
   size_t input_size;
-  FILE *input = fopen (argv [1], "rb");
+  char *tempFile = ".dlqtemp";
+  FILE *input;
+  FILE *temp = fopen(tempFile, "w");
+  char buf[1];
+  
+  if (argc > 1) {
+    if(!strcmp(argv[1],"-")) {
+      input = stdin;
+    } else {
+      input = fopen(argv[1],"r");
+      if (NULL == input) {
+        fprintf(stderr, "Unable to open '%s': %s\n",
+              argv[1], strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+    }
+  } else {
+    input = stdin;
+  }
 
-  fseek (input, 0, SEEK_END);
-  input_size = ftell (input);
-  rewind (input);
+  while (EOF != (buf[0] = fgetc(input))) {
+    fwrite(buf, sizeof(char), 1, temp);
+  }
+  fclose(temp);
+  fclose(input);
+
+  temp = fopen(tempFile, "r");
+  input_size = getSizeOfInput(temp);
+
   contents = malloc (
     input_size * sizeof(char) + 1
   );
@@ -292,29 +328,32 @@ main (int argc, char *argv []) {
     contents,
     sizeof (char),
     input_size,
-    input
+    temp
   );
   contents[sizeof(char) * input_size] = '\0';
-  fclose (input);
-
-  /* allocate memory for query + nulls around syntactic chars */
-  char expanded[(input_size + (count_syntactics(contents) * 2) + 1) * sizeof(char)];
+  fclose (temp);
+  remove(tempFile);
+  
 
   /* create doubly linked list of tokens */
-  Token *tokens = tokenize (expanded, contents);
+  Token *tokens = tokenize (contents);
 
-  printf("%s", contents);
-  free (contents);
+  //printf("%s", contents);
 
   /* replace '.' notation with functional equivalent */
   tokens = normalize (tokens);
 
   Token *token = tokens;
   while (token) {
-    printf("%s ", token->token);
+    write(1, token->token, token->toklen);
+    printf(" ");
+    fflush(stdout);
     token = token->next;
   }
   puts("\n");
 
+  free (contents);
+  printf("allocs(%li) tokens(%li)\n", numAllocs, numTokens);
   free_tokens (tokens);
+  return 0;
 }
