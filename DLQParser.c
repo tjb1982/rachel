@@ -8,22 +8,52 @@ die_parser_error(const char *msg, Token *token)
   exit(1);
 }
 
-int
-assert_matching_char(const char *query, Token *token, size_t *toklen, char c)
+//int
+//assert_char_pair(const char *query, Token *token, size_t *toklen, char c1, char c2)
+//{
+//
+//    och = 1;
+//    token = token->prev->prev;
+//    while (token && (och || *token->token == ')')) {
+//      if (*token->token == ')')
+//        och++;
+//      else if (*token->token == '(')
+//        och--;
+//      ret = (token = token->prev) ? token : ret;
+//    }
+//    break;
+//
+//
+//
+//  int tl = *toklen;
+//  if (*query == c) {
+//    query++; tl++;
+//    while (*query != c) {
+//      if (*query == '\0') {
+//        return 1;
+//      }
+//      tl++; query++;
+//    }
+//    token->toklen = ++tl;
+//    *toklen = 0;
+//  }
+//  return 0;
+//}
+
+const char *
+forward_to_matching_char(const char *query, Token *token, size_t *toklen, char c)
 {
   int tl = *toklen;
-  if (*query == c) {
-    query++; tl++;
-    while (*query != c) {
-      if (*query == '\0') {
-        return 1;
-      }
-      tl++; query++;
+  query++; tl++;
+  while (*query != c) {
+    if (*query == '\0') {
+      return NULL;
     }
-    token->toklen = ++tl;
-    *toklen = 0;
+    tl++; query++;
   }
-  return 0;
+  token->toklen = ++tl;
+  *toklen = 0;
+  return query;
 }
 
 Token *
@@ -266,9 +296,9 @@ tokenize(const char *query)
         token = inc_token(token);
         token->token = query;
       }
-      if (assert_matching_char(query, token, &toklen, '"'))
+      if (*query == '"' && !(query = forward_to_matching_char(query, token, &toklen, '"')))
         die_parser_error("Assertion error: Unmatched char (\")", first);
-      if (assert_matching_char(query, token, &toklen, '\''))
+      if (*query == '\'' && !(query = forward_to_matching_char(query, token, &toklen, '\'')))
         die_parser_error("Assertion error: Unmatched char (')", first);
       toklen++; query++;
     }
