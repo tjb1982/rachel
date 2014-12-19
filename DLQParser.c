@@ -313,26 +313,18 @@ getSizeOfInput(FILE *input){
    size_t retvalue = 0;
    char c;
 
-   if (input != stdin) {
-      if (-1 == fseek(input, 0L, SEEK_END)) {
-         fprintf(stderr, "Error seek end: %s\n", strerror(errno));
-         exit(EXIT_FAILURE);
-      }
-      if (-1 == (retvalue = ftell(input))) {
-         fprintf(stderr, "ftell failed: %s\n", strerror(errno));
-         exit(EXIT_FAILURE);
-      }
-      if (-1 == fseek(input, 0L, SEEK_SET)) {
-         fprintf(stderr, "Error seek start: %s\n", strerror(errno));
-         exit(EXIT_FAILURE);
-      }
-   } else {
-      /* for stdin, we need to read in the entire stream until EOF */
-      while (EOF != (c = fgetc(input))) {
-         retvalue++;
-      }
+   if (-1 == fseek(input, 0L, SEEK_END)) {
+     fprintf(stderr, "Error seek end: %s\n", strerror(errno));
+     exit(EXIT_FAILURE);
    }
-
+   if (-1 == (retvalue = ftell(input))) {
+     fprintf(stderr, "ftell failed: %s\n", strerror(errno));
+     exit(EXIT_FAILURE);
+   }
+   if (-1 == fseek(input, 0L, SEEK_SET)) {
+     fprintf(stderr, "Error seek start: %s\n", strerror(errno));
+     exit(EXIT_FAILURE);
+   }
    return retvalue;
 }
 
@@ -392,17 +384,17 @@ main (int argc, char *argv []) {
   /* replace '.' notation with functional equivalent */
   tokens = normalize (tokens);
 
-  Token *token = tokens;
-  while (token) {
-    write(1, token->token, token->toklen);
-    printf(" ");
-    fflush(stdout);
-    token = token->next;
-  }
-  puts("\n");
+//  Token *token = tokens;
+//  while (token) {
+//    write(1, token->token, token->toklen);
+//    printf(" ");
+//    fflush(stdout);
+//    token = token->next;
+//  }
+//  puts("\n");
 
   free (contents);
-  printf("allocs(%li) tokens(%li)\n", numAllocs, numTokens);
+//  printf("allocs(%li) tokens(%li)\n", numAllocs, numTokens);
   free_tokens (tokens);
   return 0;
 }
