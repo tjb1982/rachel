@@ -29,19 +29,23 @@ people(test $gte(age(@) 30))
 
 and either form is acceptable as source.
 
-Functional closures (e.g. for use with `$filter`, `$map`, `$reduce`, and `$fun` [below]) can be expressed in three ways:
+Functional closures (e.g. for use with `$filter`, `$map`, `$reduce`, and `$fun` below) can be expressed in three ways:
 
 1) simply pass a function (i.e., not anonymously)
 ```java
 coll.$filter(foo)
 ```
-2) declare `0` or more arguments between sqare braces `[]` followed by the function body
+2) declare 0 or more arguments between square braces `[]` followed by the function body
 ```java
-coll.$filter([item idx] idx.$mod(2).$when(item.foo))
+coll.$filter([item idx]
+  idx.$mod(2).$when(item.foo)
+)
 ```
 3) same as 2, but use `@` argument aliases instead of specifying the arguments
 ```java
-coll.$filter(@1.$mod(2).$when(@.foo))
+coll.$filter(
+  @1.$mod(2).$when(@.foo)
+)
 ```
 
 ```java
@@ -80,7 +84,7 @@ test.people(@.age.gte(30))
 
 ## `$map` joins with composition
 
-A deceptively simple case: get all the people who are known to be children. Since we have no metadata labeling people as children, we have to infer this from the parents' `children` property:
+Example: get all the people who are known to be children. Since we have no metadata labeling people as children, we have to infer this from the parents' `children` property:
 
 ```java
 test.people(children).$map(children).$cat
@@ -141,7 +145,7 @@ WHERE person.name in (
   WHERE p.name=c.person_name
 )
 ```
-Compare to Mongodb (using the nodejs native client [not ACID]):
+Compare to Mongodb (using the nodejs native client [not isolated]):
 
 ```javascript
 test.collection("people").find({
@@ -239,12 +243,11 @@ Get a preconstructed projection instead of a table you have to reconstruct in ap
 ```java
 test.people.$map([person]
   person.$join(test.people knows name)(transactions).$map([friend]
-    friend.$assoc(
-      items
-      friend.$join(test.transactions).$map([transaction]
+    friend.$merge({
+      items: friend.join(test.transactions).$map([transaction]
         transaction.$join(test.catalog items)
-      ).$cat
-    )
+      ).$apply($cat)
+    })
   )
 )
 ```

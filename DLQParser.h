@@ -29,6 +29,13 @@ typedef struct Token {
   struct Token *prev;
 } Token;
 
+typedef struct Expression {
+  const Token *function;
+  const int arity;
+  const struct Expression *child;
+  const struct Expression *sibling;
+} Expression;
+
 static Token *tptr = NULL;
 static int multiplier = 1;
 static size_t numAllocs = 0;
