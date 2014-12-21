@@ -14,26 +14,34 @@
 #define false 0
 
 #define PUNCT '.': \
-    case '(': case ')': \
-    case '[': case ']': \
-    case '{': case '}'
+		case '(': case ')': \
+		case '[': case ']': \
+		case '{': case '}'
 #define SPACE ' ': \
-    case ',': case '\n': \
-    case '\r': case '\t'
+		case ',': case '\n': \
+		case '\r': case '\t'
+
+enum Type {
+	SYNTAX,
+	SYMBOL,
+	STRING_LITERAL,
+	DECIMAL_LITERAL
+};
 
 typedef struct Token {
-  const char *token;
-  int toklen;
-  bool managed;
-  struct Token *next;
-  struct Token *prev;
+	const char *token;
+	int toklen;
+	bool managed;
+	enum Type type;
+	struct Token *next;
+	struct Token *prev;
 } Token;
 
 typedef struct Expression {
-  const Token *function;
-  const int arity;
-  const struct Expression *child;
-  const struct Expression *sibling;
+	const Token *function;
+	int arity;
+	const struct Expression *child;
+	const struct Expression *sibling;
 } Expression;
 
 static Token *tptr = NULL;
@@ -42,7 +50,7 @@ static size_t numAllocs = 0;
 static Token *allocs[100];
 static size_t numTokens = 0;
 
-void
+void *
 die_parser_error(const char *msg, Token *token);
 
 Token *
@@ -76,9 +84,9 @@ bool
 is_float_dot(const char *dot, bool check_behind);
 
 /**
- *  * Replace '.' notation with functional equivalent
- *   *
- *    **/
+ *	* Replace '.' notation with functional equivalent
+ *	 *
+ *		**/
 Token *
 normalize(Token *tokens);
 
