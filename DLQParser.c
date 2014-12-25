@@ -1,45 +1,67 @@
 #include "DLQParser.h"
 
-void *
-die_parser_error(const char *msg, Token *token)
+const char *
+tokens_to_string(const Token *token)
 {
-	free_tokens(token);
+	int size = 1;
+	const Token *rewind = token;
+	const char *start;
+	char *buf;
+
+	while (token) {
+		size += token->toklen;
+
+		if (
+			token->type >= SYMBOL &&
+			token->prev &&
+			token->prev->type != SYNTAX
+		) size++;
+
+		token = token->next;
+	}
+
+	start = buf = malloc(sizeof(char) * size);
+	
+	token = rewind;
+	while (token) {
+		if (
+			token->type >= SYMBOL &&
+			token->prev &&
+			token->prev->type != SYNTAX
+		) *buf++ = ' ';
+
+		strncpy(buf, token->token, token->toklen);
+		buf += token->toklen;
+
+		token = token->next;
+	}
+	buf[0] = '\0';
+	return start;
+}
+
+void
+print_tokens(const Token *token)
+{
+	const Arena *arena = token->arena;
+	while (token) {
+		write(1, token->token, token->toklen);
+		printf(" ");
+		fflush(stdout);
+		token = token->next;
+	}
+	puts("\n");
+
+	printf("allocs(%li) tokens(%li)\n", arena->numAllocs, arena->totalNumTokens);
+}
+
+void *
+die_parser_error(const char *msg, Arena *arena)
+{
+	free_tokens(arena);
 	fprintf(stderr, "Parser error: %s\n", msg);
 	exit(1);
 	return NULL;
 }
-
-//int
-//assert_char_pair(const char *query, Token *token, int *toklen, char c1, char c2)
-//{
-//
-//		och = 1;
-//		token = token->prev->prev;
-//		while (token && (och || *token->token == ')')) {
-//			if (*token->token == ')')
-//				och++;
-//			else if (*token->token == '(')
-//				och--;
-//			ret = (token = token->prev) ? token : ret;
-//		}
-//		break;
-//
-//
-//
-//	int tl = *toklen;
-//	if (*query == c) {
-//		query++; tl++;
-//		while (*query != c) {
-//			if (*query == '\0') {
-//				return 1;
-//			}
-//			tl++; query++;
-//		}
-//		token->toklen = ++tl;
-//		*toklen = 0;
-//	}
-//	return 0;
-//}
 
 const char *
 forward_to_matching_char(const char *query, Token *token, int *toklen, char c)
@@ -63,6 +85,8 @@ prior_expression(Token *token)
 	int och = 0;
 	Token *ret = token;
 
+	if (!token->prev) return NULL;
+
 	switch (*token->prev->token) {
 	case '}':
 		while (token->prev && *token->prev->token != '{')
@@ -76,7 +100,7 @@ prior_expression(Token *token)
 				och++;
 			else if (*token->token == '(')
 				och--;
-			ret = (token = token->prev) ? token : ret;
+			ret = token->prev ? (token = token->prev) : token;
 		}
 		break;
 	default:
@@ -121,46 +145,59 @@ unlink_token(Token *token)
 	token->next = token->prev = NULL;
 }
 
-Token *
-new_token()
+int
+increase_multiplier(Arena *arena)
 {
-	if (numTokens == BUFFSIZE * multiplier) {
-		tptr = allocs[numAllocs++] = malloc(
-			sizeof(Token) * BUFFSIZE * ++multiplier
+	return arena->multiplier = arena->multiplier + arena->multiplier;
+}
+
+Token *
+new_token(Arena *arena)
+{
+	if (arena->numTokens == BUFFSIZE * arena->multiplier) {
+		if (arena->numAllocs == MAXALLOCS) die_parser_error(
+			"Maximum allocations reached. Aborting.",
+			arena
 		);
-		numTokens = 0;
+		increase_multiplier(arena);
+		arena->tptr = arena->allocs[arena->numAllocs++] = malloc(
+			sizeof(Token) * BUFFSIZE * arena->multiplier
+		);
+		arena->numTokens = 0;
 	}
-	tptr->token = NULL;
-	tptr->toklen = 0;
-	tptr->managed = false;
-	tptr->type = SYNTAX;
-	tptr->next = tptr->prev = NULL;
+	arena->totalNumTokens++;
+	arena->tptr->token = NULL;
+	arena->tptr->toklen = 0;
+	arena->tptr->managed = false;
+	arena->tptr->type = SYNTAX;
+	arena->tptr->arena = arena;
+	arena->tptr->next = arena->tptr->prev = NULL;
 
-	numTokens++;
+	arena->numTokens++;
 
-	return tptr++;
+	return arena->tptr++;
 }
 
 void
-free_tokens (Token *tokens)
+free_tokens (Arena *arena)
 {
-	Token *prev;
+	Token *tokens = arena->first;
 	while (tokens) {
 		if (tokens->managed == true)
 			free((void *)tokens->token);
 		tokens = tokens->next;
 	}
-	while (numAllocs) {
-		free(allocs[--numAllocs]);
+	while (arena->numAllocs) {
+		free(arena->allocs[--arena->numAllocs]);
 	}
-	numTokens = 0;
+	free(arena);
 }
 
 Token *
 inc_token(Token *token)
 {
 	Token *prev = token;
-	token->next = new_token();
+	token->next = new_token(token->arena);
 	token = token->next;
 	token->prev = prev;
 
@@ -168,9 +205,9 @@ inc_token(Token *token)
 }
 
 Token *
-token_from_string(const char *str)
+token_from_string(const char *str, Arena *arena)
 {
-	Token *token = new_token();
+	Token *token = new_token(arena);
 	int toklen = (int) strlen(str);
 	char *t = malloc(sizeof(char) * toklen);
 	memcpy(t, str, toklen);
@@ -181,9 +218,9 @@ token_from_string(const char *str)
 }
 
 Token *
-token_from_char(char c)
+token_from_char(char c, Arena *arena)
 {
-	Token *token = new_token();
+	Token *token = new_token(arena);
 	char *t = malloc(sizeof(char));
 	*t = c;
 	token->token = t;
@@ -200,7 +237,7 @@ insert_tokens_after(Token *token, Token *after)
 
 	next = token->next;
 	end = after;
-	
+
 	while (end->next) {
 		end = end->next;
 		count++;
@@ -237,11 +274,24 @@ Expression *new_expression(const Token *function)
 	return e;
 }
 
-const Expression *
-analyze(const Token *tokens)
+void
+free_expressions(const Expression *e)
 {
-	Expression *e = new_expression(tokens);
-	e->function = tokens;
+	if (e->child)
+		free_expressions(e->child);
+	if (e->sibling)
+		free_expressions(e->sibling);
+	free((void *)e);
+}
+
+const Expression *
+analyze(Arena *arena)
+{
+	Expression *e = new_expression(arena->first);
+//	e->child = new_expression(tokens);
+//	e->sibling = new_expression(tokens);
+//	e->sibling->sibling = new_expression(tokens);
+	free_expressions(e);
 	return e;
 }
 
@@ -251,7 +301,8 @@ splice_token2(Token *remove, Token *prev)
 	Token *next = remove->next;
 	unlink_token(remove);
 	next->prev = prev;
-	return next->prev ? (next->prev->next = next) : next;
+	if (next->prev) next->prev->next = next;
+	return next;
 }
 
 Token *
@@ -260,21 +311,21 @@ splice_token1(Token *remove)
 	return splice_token2(remove, remove->prev);
 }
 
-Token *
-normalize(Token *tokens)
+Arena *
+normalize(Arena *arena)
 {
-	Token *after, *expression, *next = tokens;
+	Token *after, *expression, *next = arena->first;
 	int ins = 0;
 
 	while (next) {
 		if (*next->token == '.' && next->toklen == 1) {
 			if (
-				next == tokens ||
+				!next->prev ||
 				!next->next ||
 				*next->next->token == '.' ||
 				*next->next->token == ')' ||
-				(*next->next->token == '(' && !next->next->next) ||
-				(next->prev && *next->prev->token == '(')
+				*next->prev->token == '(' ||
+				(*next->next->token == '(' && !next->next->next)
 			) {
 				/* 
 				 * can't start query with '.';
@@ -283,13 +334,13 @@ normalize(Token *tokens)
 				 * can't have a '(' or ')' as a symbol
 				 * */
 				die_parser_error(
-					"illegal use of '.' token.", tokens
+					"illegal use of '.' token.", arena
 				);
 			}
 			expression = prior_expression(next);
 			next = splice_token2(next, expression->prev);
-			if (expression == tokens)
-				tokens = next; // reset the starting position
+			if (expression == arena->first)
+				arena->first = next; // reset the starting position
 
 			after = end_of_expression(next);
 			if (after->next && *after->next->token == '(')
@@ -298,34 +349,38 @@ normalize(Token *tokens)
 				insert_tokens_after(next->next, expression);
 			else {
 				insert_tokens_after(
-					after, token_from_char('(')
+					after, token_from_char('(', arena)
 				);
 				ins = insert_tokens_after(
 					after->next, expression
 				);
 				while (--ins) expression = expression->next;
 				insert_tokens_after(
-					expression, token_from_char(')')
+					expression, token_from_char(')', arena)
 				);
 			}
 		}
 		else next = next->next;
 	}
-	return tokens;
+	return arena;
 }
 
-Token *
+Arena *
 tokenize(const char *query)
 {
 	int toklen = 0;
 	bool stop = false;
-	Token *first, *prev, *token;
+	Token *prev, *token;
 	const char *orig = query;
 
-	allocs[numAllocs++] = tptr = malloc(
-		sizeof(Token) * BUFFSIZE * multiplier
+	Arena *arena = malloc(sizeof(Arena));
+	arena->multiplier = 1;
+	arena->numAllocs = arena->numTokens = arena->totalNumTokens = 0;
+
+	arena->allocs[arena->numAllocs++] = arena->tptr = arena->first = malloc(
+		sizeof(Token) * BUFFSIZE * arena->multiplier
 	);
-	token = first = new_token();
+	token = arena->first = new_token(arena);
 
 	token->token = NULL;
 
@@ -349,7 +404,7 @@ tokenize(const char *query)
 			}
 			if (!token->toklen) token->toklen = toklen;
 
-			token = inc_token(token);
+			if (token->token) token = inc_token(token);
 			token->token = query++;
 			token->toklen = 1;
 			token->type = SYNTAX;
@@ -390,7 +445,7 @@ tokenize(const char *query)
 				query, token, &toklen, '"'
 			)) && die_parser_error(
 				"Assertion error: Unmatched char (\")",
-				first
+				arena
 			);
 
 			*query == '\'' &&
@@ -399,95 +454,18 @@ tokenize(const char *query)
 				query, token, &toklen, '\''
 			)) && die_parser_error(
 				"Assertion error: Unmatched char (')",
-				first
+				arena
 			);
 			toklen++; query++;
 		}
 	}
 	if (!token->toklen) token->toklen = toklen;
-	if (!token->token && token == first) {
-		free_tokens(first);
-		first = NULL;
+	if (!token->token && token == arena->first) {
+		free_tokens(arena);
+		return NULL;
 	}
 
-	return first; 
+	return arena;
 }
 
-int
-main (int argc, char *argv []) {
-	/* copy contents of file into buffer "contents" */
-	char *contents;
-	size_t input_size = 0;
-	char *tempFile = ".dlqtemp";
-	FILE *input = NULL;
-	FILE *temp = NULL;
-	char buf[1];
-	
-	if (argc > 1) {
-		if(!strcmp(argv[1],"-")) {
-			input = stdin;
-		}
-		else {
-			input = fopen(argv[1],"r");
-			if (NULL == input) {
-				fprintf(
-					stderr,
-					"Unable to open '%s': %s\n",
-					argv[1],
-					strerror(errno)
-				);
-				exit(EXIT_FAILURE);
-			}
-		}
-	}
-	else {
-		input = stdin;
-	}
 
-	temp = fopen(tempFile, "w");
-	while (EOF != (buf[0] = fgetc(input))) {
-		input_size += fwrite(buf, sizeof(char), 1, temp);
-	}
-	fclose(temp);
-	fclose(input);
-
-	temp = fopen(tempFile, "r");
-	contents = malloc (
-		input_size * sizeof(char) + 1
-	);
-	fread (
-		contents,
-		sizeof (char),
-		input_size,
-		temp
-	);
-	contents[sizeof(char) * input_size] = '\0';
-	fclose (temp);
-	remove(tempFile);
-
-
-	/* create doubly linked list of tokens */
-	Token *tokens = tokenize (contents);
-
-	//printf("%s", contents);
-
-	/* replace '.' notation with functional equivalent */
-	tokens = normalize (tokens);
-
-	/* create abstract syntax tree from Tokens */
-//	const Expression *program = analyze (tokens);
-
-	Token *token = tokens;
-	while (token) {
-		write(1, token->token, token->toklen);
-		printf(" ");
-		fflush(stdout);
-		token = token->next;
-	}
-	puts("\n");
-
-	printf("allocs(%li) tokens(%li)\n", numAllocs, numTokens);
-	free_tokens (tokens);
-	free (contents);
-	return 0;
-}

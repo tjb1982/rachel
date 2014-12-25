@@ -7,7 +7,9 @@
 #include <unistd.h>
 #include <errno.h>
 
-#define BUFFSIZE 4096
+//#define BUFFSIZE 4096
+#define BUFFSIZE 512 //1024 //2048
+#define MAXALLOCS 101
 
 #define bool int
 #define true 1
@@ -35,23 +37,34 @@ typedef struct Token {
 	enum Type type;
 	struct Token *next;
 	struct Token *prev;
+	struct Arena *arena;
 } Token;
 
 typedef struct Expression {
 	const Token *function;
 	int arity;
-	const struct Expression *child;
-	const struct Expression *sibling;
+	struct Expression *child;
+	struct Expression *sibling;
 } Expression;
 
-static Token *tptr = NULL;
-static int multiplier = 1;
-static size_t numAllocs = 0;
-static Token *allocs[100];
-static size_t numTokens = 0;
+typedef struct Arena {
+	struct Token *first;
+	struct Token *tptr;
+	int multiplier;
+	size_t numAllocs;
+	struct Token *allocs[MAXALLOCS];
+	size_t numTokens;
+	size_t totalNumTokens;
+} Arena;
+
+const char *
+tokens_to_string(const Token *token);
+
+void
+print_tokens(const Token *tokens);
 
 void *
-die_parser_error(const char *msg, Token *token);
+die_parser_error(const char *msg, Arena *arena);
 
 Token *
 prior_expression(Token *token);
@@ -63,16 +76,16 @@ Token *
 new_token();
 
 void
-free_tokens (Token *tokens);
+free_tokens (Arena *arena);
 
 Token *
 inc_token(Token *token);
 
 Token *
-token_from_string(const char *str);
+token_from_string(const char *str, Arena *arena);
 
 Token *
-token_from_char(char c);
+token_from_char(char c, Arena *arena);
 
 int
 insert_tokens_after(Token *token, Token *after);
@@ -84,16 +97,17 @@ bool
 is_float_dot(const char *dot, bool check_behind);
 
 /**
- *	* Replace '.' notation with functional equivalent
- *	 *
- *		**/
-Token *
-normalize(Token *tokens);
+ ** Replace '.' notation with functional equivalent
+ **
+ ***/
+Arena *
+normalize(Arena *arena);
 
-Token *
+Arena *
 tokenize(const char *query);
 
-
+const Expression *
+analyze(Arena *arena);
 
 #endif
 
