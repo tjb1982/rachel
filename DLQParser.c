@@ -1,7 +1,20 @@
 #include "DLQParser.h"
 
+int
+abs(int n)
+{
+	const int ret[2] = { n, -n };
+	return ret[n < 0];
+}
+
 const char *
 tokens_to_string(const Token *token)
+{
+	return tokens_to_string2(token, '\0');
+}
+
+const char *
+tokens_to_string2(const Token *token, const char sep)
 {
 	int size = 1;
 	const Token *rewind = token;
@@ -9,7 +22,7 @@ tokens_to_string(const Token *token)
 	char *buf;
 
 	while (token) {
-		size += token->toklen;
+		size += token->toklen + (sep != '\0');
 
 		if (
 			token->type >= SYMBOL &&
@@ -30,12 +43,14 @@ tokens_to_string(const Token *token)
 			token->prev->type != SYNTAX
 		) *buf++ = ' ';
 
-		strncpy(buf, token->token, token->toklen);
+		memcpy(buf, token->token, token->toklen);
 		buf += token->toklen;
+		if (sep != '\0') *buf++ = sep;
 
 		token = token->next;
 	}
 	buf[0] = '\0';
+	if (sep != '\0') *--buf = '\0';
 	return start;
 }
 
@@ -57,7 +72,9 @@ print_tokens(const Token *token)
 void *
 die_parser_error(const char *msg, Arena *arena)
 {
+	const ArenaOptions *opts = arena->opts;
 	free_tokens(arena);
+	free((void *)opts);
 	fprintf(stderr, "Parser error: %s\n", msg);
 	exit(1);
 	return NULL;
@@ -146,22 +163,28 @@ unlink_token(Token *token)
 }
 
 int
-increase_multiplier(Arena *arena)
+inc_factor(const Arena *arena)
 {
-	return arena->multiplier = arena->multiplier + arena->multiplier;
+	return ceil(
+		pow((double)arena->multiplier, (double)arena->opts->EXPONENT)
+	);
 }
 
 Token *
 new_token(Arena *arena)
 {
-	if (arena->numTokens == BUFFSIZE * arena->multiplier) {
-		if (arena->numAllocs == MAXALLOCS) die_parser_error(
+	if (arena->numTokens == arena->opts->BUFFSIZE * arena->opts->inc_factor(arena)) {
+		if (arena->numAllocs == arena->opts->MAXALLOCS) die_parser_error(
 			"Maximum allocations reached. Aborting.",
 			arena
 		);
-		increase_multiplier(arena);
+		arena->multiplier++;
+		printf("alloc %i: %li tokens\n", arena->multiplier, arena->totalNumTokens);
+		fflush(stdout);
 		arena->tptr = arena->allocs[arena->numAllocs++] = malloc(
-			sizeof(Token) * BUFFSIZE * arena->multiplier
+			sizeof(Token) *
+			arena->opts->BUFFSIZE *
+			arena->opts->inc_factor(arena)
 		);
 		arena->numTokens = 0;
 	}
@@ -190,6 +213,7 @@ free_tokens (Arena *arena)
 	while (arena->numAllocs) {
 		free(arena->allocs[--arena->numAllocs]);
 	}
+	free(arena->allocs);
 	free(arena);
 }
 
@@ -259,8 +283,15 @@ is_numeric(char c)
 bool
 is_float_dot(const char *dot, bool check_behind)
 {
-	return *dot == '.' && is_numeric(
-		*(dot + 1) || (check_behind && is_numeric(*(dot - 1)))
+	return 
+	*dot == '.' && (
+		is_numeric(*(dot + 1)) || (
+			(
+				*(dot + 1) == ')' ||
+				*(dot + 1) == '('
+			) &&
+			check_behind && is_numeric(*(dot - 1))
+		)
 	);
 }
 
@@ -365,23 +396,66 @@ normalize(Arena *arena)
 	return arena;
 }
 
+ArenaOptions *
+new_arena_options(
+	size_t buffsize,
+	size_t maxallocs,
+	double exponent,
+	int (*custom_inc_factor)(const struct Arena *)
+) {
+	ArenaOptions opts = {
+		.BUFFSIZE = buffsize,
+		.MAXALLOCS = maxallocs,
+		.EXPONENT = exponent,
+		.inc_factor = custom_inc_factor ? custom_inc_factor : inc_factor
+	};
+	ArenaOptions *dest = malloc(sizeof (ArenaOptions));
+	memcpy(dest, &opts, sizeof *dest);
+	return dest;
+}
+
+Arena *
+new_arena(const ArenaOptions *opts)
+{
+	Arena *arena = malloc(sizeof(Arena));
+	arena->multiplier = 1;
+	arena->numAllocs = arena->numTokens = arena->totalNumTokens = 0;
+	arena->opts = opts;
+	arena->allocs = malloc(opts->MAXALLOCS * sizeof (size_t));
+
+	return arena;
+}
+
 Arena *
 tokenize(const char *query)
+{
+	return tokenize3(query, new_arena_options(256, 100, 2.71828, NULL), false);
+}
+
+Arena *
+tokenize2(const char *query, ArenaOptions *opts)
+{
+	return tokenize3(query, opts, false);
+}
+
+Arena *
+tokenize3(const char *query, ArenaOptions *opts, bool verbose)
 {
 	int toklen = 0;
 	bool stop = false;
 	Token *prev, *token;
 	const char *orig = query;
 
-	Arena *arena = malloc(sizeof(Arena));
-	arena->multiplier = 1;
-	arena->numAllocs = arena->numTokens = arena->totalNumTokens = 0;
+	Arena *arena = new_arena(opts);
 
-	arena->allocs[arena->numAllocs++] = arena->tptr = arena->first = malloc(
-		sizeof(Token) * BUFFSIZE * arena->multiplier
+	arena->allocs[arena->numAllocs++] =
+	arena->tptr =
+	arena->first = malloc(
+		sizeof(Token) *
+		arena->opts->BUFFSIZE *
+		arena->opts->inc_factor(arena)
 	);
-	token = arena->first = new_token(arena);
-
+	token = new_token(arena);
 	token->token = NULL;
 
 	/* tokenize char[] by creating Tokens whose 
@@ -399,17 +473,23 @@ tokenize(const char *query)
 		case PUNCT:
 			/* don't tokenize floats */
 			if (is_float_dot(query, orig != query)) {
+				if (token->prev && token->prev->type == SYMBOL)
+					token = inc_token(token);
+				if (!token->token) {
+					token->token = query;
+				} 
 				query++; toklen++;
-				break;
 			}
-			if (!token->toklen) token->toklen = toklen;
+			else {
+				if (!token->toklen) token->toklen = toklen;
 
-			if (token->token) token = inc_token(token);
-			token->token = query++;
-			token->toklen = 1;
-			token->type = SYNTAX;
+				if (token->token) token = inc_token(token);
+				token->token = query++;
+				token->toklen = 1;
+				token->type = SYNTAX;
 
-			toklen = 0;
+				toklen = 0;
+			}
 			break;
 		case SPACE:
 			if (!token->toklen)

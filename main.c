@@ -1,90 +1,44 @@
-#include "DLQParser.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-
-const char *normalize_tests[] = {
-	"x", "x",
-	"x.y", "y(x)",
-	"().x", "x(())",
-	"x.()", "()(x)",
-	"x.y.()", "()(y(x))",
-	"().x.y", "y(x(()))",
-	"().()", "()(())",
-	"x.y.z", "z(y(x))",
-	"z(x().y)", "z(y(x()))",
-	"z(x(\"foo\").y)", "z(y(x(\"foo\")))",
-	"z(x(\"f;oo\").y)", "z(y(x(\"f;oo\")))",
-	"z;(x(\"f;oo\").y)", "z",
-
-	"test.buildings(@.marketValue.$gte(200000))",
-	"buildings(test $gte(marketValue(@)200000))",
-
-	"test.people.$map(@.children.$join(test.people))",
-	"$map(people(test)$join(children(@)people(test)))",
-
-	"test.people.$map(test.people.$join(@.children))",
-	"$map(people(test)$join(people(test)children(@)))",
-
-	NULL
-};
-
-int
-test_normalize(const char *source, const char *expectation)
-{
-	Arena *arena = normalize(tokenize(source));
-	int ret = 0;
-	const char *result = tokens_to_string(arena->first);
-
-	if (strcmp(result, expectation)) {
-		fprintf(stderr,
-			"Fail: %s, %s, %s\n\n",
-			source,
-			expectation,
-			result
-		);
-		ret = 1;
-	}
-	else printf("PASS: %s, %s, %s\n", source, expectation, result);
-
-	print_tokens(arena->first);
-
-	free_tokens(arena);
-	free((void *)result);
-	return ret;
-}
-
-void
-test_all()
-{
-	int i = 0, j = 10;
-	while (j--) {
-		while (normalize_tests[i] && normalize_tests[i+1]) {
-			test_normalize(normalize_tests[i], normalize_tests[i+1]);
-			i = i + 2;
-		}
-		i = 0;
-	}
-}
+#include "DLQParser.h"
 
 int
 main (int argc, char *argv []) {
-	/* copy contents of file into buffer "contents" */
-	char c, *contents, *tempFile = ".dlqtemp", buf[1], *input_file_name;
-	size_t input_size = 0;
+
+	char c, *contents, *tempFile = ".dlqtemp", buf[1], *input_file_name, *strexec;
+	size_t input_size = 0, buffsize = 255, maxallocs = 100;
+	double exponent = 2.71828;
 	FILE *input = NULL, *temp = NULL;
-	bool test = false;
-	
+	bool verbose = false;
+
 	if (argc > 1) {
 		if(!strcmp(argv[1],"-")) {
 			input = stdin;
 		}
 		else {
-			while (~(c = getopt(argc, argv, "ti:"))) {
+			while (~(c = getopt(argc, argv, "vb:a:x:e:i:"))) {
 				switch (c) {
-				case 't':
-					test = true;
+				case 'v':
+					verbose = true;
+					break;
+				case 'b':
+					buffsize = (size_t)strtol(optarg, NULL, 10);
+					break;
+				case 'a':
+					maxallocs = (size_t)strtol(optarg, NULL, 10);
+					maxallocs = ~maxallocs? maxallocs : 9999999;
+					break;
+				case 'x':
+					exponent = (double)strtof(optarg, NULL);
+					break;
+				case 'e':
+					input_size = strlen(optarg) + 1;
+					strexec = malloc(
+						(sizeof(char) * input_size) + 1
+					);
+					memcpy(strexec, optarg, input_size);
 					break;
 				case 'i':
 					input = fopen(optarg,"r");
@@ -116,19 +70,16 @@ main (int argc, char *argv []) {
 		input = stdin;
 	}
 
-	if (test == true) {
-		test_all();
-		return 0;
-	}
-
-	if (!input) return 1;
-
 	temp = fopen(tempFile, "w");
-	while (EOF != (buf[0] = fgetc(input))) {
+	if (!input_size) while (EOF != (buf[0] = fgetc(input))) {
 		input_size += fwrite(buf, sizeof(char), 1, temp);
 	}
+	else {
+		fwrite(strexec, sizeof(char), input_size, temp);
+		free(strexec);
+	}
 	fclose(temp);
-	fclose(input);
+	if (input) fclose(input);
 
 	temp = fopen(tempFile, "r");
 	contents = malloc (
@@ -144,18 +95,23 @@ main (int argc, char *argv []) {
 	fclose (temp);
 	remove(tempFile);
 
+	ArenaOptions *opts = new_arena_options(
+		buffsize, maxallocs, exponent, NULL 
+	);
+
 	/* create doubly linked list of tokens */
-	Arena *arena = tokenize (contents);
+	Arena *arena = tokenize3(contents, opts, verbose);
 
 	/* replace '.' notation with functional equivalent */
 	normalize (arena);
 
 	/* create abstract syntax tree from Tokens */
-//	const Expression *program = analyze (arena);
+	const Expression *program = analyze (arena);
 
-	//print_tokens(arena->first);
+	if (verbose) print_tokens(arena->first);
 	free_tokens (arena);
+	free(opts);
 	free (contents);
-	return 0;
+	return EXIT_SUCCESS;
 }
 

@@ -6,10 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-
-//#define BUFFSIZE 4096
-#define BUFFSIZE 512 //1024 //2048
-#define MAXALLOCS 101
+#include <math.h>
 
 #define bool int
 #define true 1
@@ -47,18 +44,32 @@ typedef struct Expression {
 	struct Expression *sibling;
 } Expression;
 
+typedef struct ArenaOptions {
+	const size_t BUFFSIZE;
+	const size_t MAXALLOCS;
+	const double EXPONENT;
+	int (*inc_factor)(const struct Arena *a);
+} ArenaOptions;
+
 typedef struct Arena {
 	struct Token *first;
 	struct Token *tptr;
 	int multiplier;
 	size_t numAllocs;
-	struct Token *allocs[MAXALLOCS];
+	struct Token **allocs;
 	size_t numTokens;
 	size_t totalNumTokens;
+	const struct ArenaOptions *opts;
 } Arena;
+
+int
+abs(int n);
 
 const char *
 tokens_to_string(const Token *token);
+
+const char *
+tokens_to_string2(const Token *token, const char sep);
 
 void
 print_tokens(const Token *tokens);
@@ -103,12 +114,25 @@ is_float_dot(const char *dot, bool check_behind);
 Arena *
 normalize(Arena *arena);
 
+ArenaOptions *
+new_arena_options(
+	size_t buffsize,
+	size_t maxallocs,
+	double exponent,
+	int (*inc_factor)(const Arena *)
+);
+
+Arena *
+tokenize2(const char *query, struct ArenaOptions *opts);
+
+Arena *
+tokenize3(const char *query, struct ArenaOptions *opts, bool verbose);
+
 Arena *
 tokenize(const char *query);
 
 const Expression *
 analyze(Arena *arena);
 
-#endif
-
+#endif // _DLQPARSER_H_
 
