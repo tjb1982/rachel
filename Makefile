@@ -1,16 +1,16 @@
-all: debug dlq dlqtest
+all: debug rachel racheltest
 
-dlq:
-	clang main.c -o dlq -O3 DLQParser.o -lm
+rachel:
+	clang main.c -o $@ parser.o -lm
 
-debug: DLQParser.o 
-	clang main.c -o dlq.debug -g DLQParser.o -lm
+debug: parser.o 
+	clang main.c -o rachel.debug -g parser.o -lm
 
-DLQParser.o:
-	clang -c -o DLQParser.o DLQParser.c 
+parser.o: 
+	clang -c -o parser.o parser.c
 
-dlqtest: DLQParser.o
-	clang test.c -o dlqtest -g -O3 DLQParser.o -lm
+racheltest: parser.o
+	clang test.c -o racheltest -g -O3 parser.o -lm
 
 clean:
-	rm -f *.o dlq*
+	rm -f *.o rachel*

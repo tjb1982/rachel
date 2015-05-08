@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
-#include "DLQParser.h"
+#include "parser.h"
 
 const char *normalize_tests[] = {
 	"x", "x",
@@ -44,10 +44,43 @@ const char *normalize_tests[] = {
 	NULL
 };
 
+struct TypeTest {
+	const char *source;
+	enum Type type;
+	int pos;
+};
+
+struct TypeTest type_tests[] = {
+	{ "\"foo\"", STRING, 0 },
+	{ "foo(1)", NUMBER, 2 },
+	{ "foo(1.1) 1.2", FLOAT, 4 },
+	{ "-1", NUMBER, 0 },
+	{ "+1", NUMBER, 0 },
+	{ "-1.0", FLOAT, 0 },
+	{ "-.1", FLOAT, 0 },
+	{ "-.0", FLOAT, 0 },
+	{ "-.0j", FLOAT, 0 },
+	{ "0j", NUMBER, 0 },
+	{ "(0j)", NUMBER, 1 },
+	{ "(\"0j\")", STRING, 1 },
+	{ "(j0)", SYMBOL, 1 },
+	{ "()", SYNTAX, 1 },
+	{ "buildings.address(\"lalala\")", SYNTAX, 1 },
+	{ "buildings.address(\"lalala\")", STRING, 4 },
+	{ "buildings.address(\"lalala\" +.0)", FLOAT, 5 },
+	{ "buildings.address(\"lalala\" +0)", NUMBER, 5 },
+	{ "buildings.address(\"lalala\") +0", NUMBER, 6 },
+	{ "(", SYNTAX, 0 },
+	{ "2.22.$gt(foo)", FLOAT, 0 },
+	{ "2.22.$gt('f')", CHAR, 4 },
+	{ "foo(\"lala\" .2)", FLOAT, 3 },
+	{ NULL, -1, -1 }
+};
+
 int
-test_normalize(const char *source, const char *expectation, bool verbose, const ArenaOptions *opts)
+test_normalize(const char *source, const char *expectation, bool verbose, ArenaOptions *opts)
 {
-	Arena *arena = normalize(tokenize2(source, (ArenaOptions *)opts));
+	Arena *arena = normalize(tokenize2(source, opts));
 	int ret = 0;
 	const char *result = tokens_to_string2(arena->first, ' ');
 
@@ -69,6 +102,33 @@ test_normalize(const char *source, const char *expectation, bool verbose, const 
 	return ret;
 }
 
+int test_parse_type(struct TypeTest test, bool verbose, ArenaOptions *opts)
+{
+	Arena *arena = tokenize2(test.source, opts);
+	int ret = 0, pos = test.pos;
+	Token *token = arena->first;
+	while (token && pos--)
+		token = token->next;
+
+	if (!token) {
+		fprintf(stderr,
+			"Fail: Token at position %i not found.\n\n",
+			test.pos
+		);
+		ret++;
+	}
+	else if (token->type != test.type) {
+		fprintf(stderr,
+			"Fail: Type %i does not match token->type (%i) for token: ",
+			test.type, token->type
+		);
+		write(1, token->token, token->toklen); puts("\n");
+		ret++;
+	}
+
+	return ret;
+}
+
 int
 test_analyze(Arena *arena, bool verbose)
 {
@@ -80,11 +140,12 @@ int
 test_all(
 	int times,
 	bool verbose,
-	const ArenaOptions *opts
+	ArenaOptions *opts
 ) {
-	int i = 0, j = times, failed = 0;
+	int j = times, failed = 0;
 	while (j--) {
-		while (normalize_tests[i] && normalize_tests[i+1]) {
+		int i = 0;
+		while (normalize_tests[i] && normalize_tests[i + 1]) {
 			failed += test_normalize(
 				normalize_tests[i],
 				normalize_tests[i+1],
@@ -94,6 +155,14 @@ test_all(
 			i = i + 2;
 		}
 		i = 0;
+		while (type_tests[i].source != NULL) {
+			failed += test_parse_type(
+				type_tests[i],
+				verbose,
+				opts
+			);
+			i++;
+		}
 	}
 	return failed;
 }
@@ -160,10 +229,11 @@ main (int argc, char *argv []) {
 			}
 		}
 	}
-	const ArenaOptions *opts = new_arena_options(
+	ArenaOptions *opts = new_arena_options(
 		buffsize, maxallocs, exponent, NULL
 	);
 	int ret = test_all(iterations, verbose, opts);
+	if (ret) printf("%i failed\n", ret);
 	free((void *)opts);
 	return ret;
 }

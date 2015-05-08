@@ -1,0 +1,33 @@
+;;$include(
+;;	["network.c"]
+;;	lal_get_socket_or_die.$fun(
+;;		[host(struct addrinfo *)]
+;;		socket(
+;;			host->ai_family
+;;			host->ai_socktype
+;;			host->ai_protocol
+;;		).$lt(0).if(
+;;			printf(
+;;				"Unable to connect to socket: %s",
+;;				strerror(errno)
+;;			)
+;;			sock
+;;		)
+;;	)
+;;)
+
+$def(
+	lal_socket
+	$fun(
+		[host(struct addrinfo *)]
+		socket(
+			host->ai_family
+			host->ai_socktype
+			host->ai_protocol
+		).$as(sock)
+		.lt(0).if(
+			printf("blah: %s", strerror(errno))
+			sock
+		)
+	)
+)

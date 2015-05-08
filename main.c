@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "DLQParser.h"
+#include "parser.h"
 
 int
 main (int argc, char *argv []) {
@@ -28,7 +28,7 @@ main (int argc, char *argv []) {
 					break;
 				case 'a':
 					maxallocs = (size_t)strtol(optarg, NULL, 10);
-					maxallocs = ~maxallocs? maxallocs : 9999999;
+					maxallocs = ~maxallocs ? maxallocs : 9999999;
 					break;
 				case 'x':
 					exponent = (double)strtof(optarg, NULL);
