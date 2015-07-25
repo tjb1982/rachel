@@ -21,6 +21,7 @@
 		case '\r': case '\t'
 
 enum Type {
+	UNDEFINED,
 	SYNTAX,
 //	SYNTAX_OPEN_PAREN,
 //	SYNTAX_CLOSE_PAREN,

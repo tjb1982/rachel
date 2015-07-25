@@ -38,6 +38,7 @@ tokens_to_string2(const Token *token, const char sep)
 	token = rewind;
 	while (token) {
 		if (
+			sep == '\0' &&
 			token->type >= SYMBOL &&
 			token->prev &&
 			token->prev->type >= SYMBOL
@@ -191,7 +192,8 @@ new_token(Arena *arena)
 	arena->tptr->token = NULL;
 	arena->tptr->toklen = 0;
 	arena->tptr->managed = false;
-	arena->tptr->type = SYNTAX;
+	/* set the type to the first element of `enum Type` */
+	arena->tptr->type = 0;
 	arena->tptr->arena = arena;
 	arena->tptr->next = arena->tptr->prev = NULL;
 
@@ -410,7 +412,6 @@ Arena *
 tokenize3(const char *query, ArenaOptions *opts, bool verbose)
 {
 	int toklen = 0;
-	bool stop = false;
 	Token *prev, *token;
 	const char *orig = query;
 
@@ -426,12 +427,25 @@ tokenize3(const char *query, ArenaOptions *opts, bool verbose)
 	token = new_token(arena);
 	token->token = NULL;
 
-	/* tokenize char[] by creating Tokens whose 
-	 * token->token point to the start of each 
+	/**
+	 * tokenize null terminated string by creating Tokens
+	 * whose `token->token` point to the start of each 
 	 * token and provide the length in token->toklen.
-	 * THESE ARE NOT NULL TERMINATED "C STRINGS" */
+	 * __These aren't null-terminated "C strings"__
+	 * */
 	while (*query != '\0') {
-		stop = false;
+		/**
+		 * if token->toklen is assigned, this is the signal
+		 * to increment to the next token and reset the
+		 * `toklen` counter.
+		 * */
+		if (token->toklen) {
+			token = inc_token(token);
+			toklen = 0;
+		}
+		if (!token->token)
+			token->token = query;
+
 		switch (*query) {
 		case ';':
 			/* comments */
@@ -439,88 +453,75 @@ tokenize3(const char *query, ArenaOptions *opts, bool verbose)
 				;
 			break;
 		case PUNCT:
-			/* don't tokenize floats */
+			/* don't tokenize decimal points */
 			if (is_decimal_point(query, orig != query)) {
-				if (token->prev && token->prev->type == SYMBOL) {
-					token = inc_token(token);
-				}
-				if (!token->token) {
-					token->token = query;
-				}
 				token->type = FLOAT;
 				query++; toklen++;
 			}
 			else {
-				if (!token->toklen) token->toklen = toklen;
-
-				if (token->token) token = inc_token(token);
-				token->token = query++;
-				token->toklen = 1;
-				token->type = SYNTAX;
-
-				toklen = 0;
+				if (toklen) {
+					/** 
+					 * End the current token, but don't increment the query pointer so
+					 * that when we come back around we can account for the syntactic
+					 * token in the `else` statement.
+					 * */
+					token->toklen = toklen;
+				}
+				else {
+					token->toklen = 1;
+					token->type = SYNTAX;
+					query++;
+				}
 			}
 			break;
 		case SPACE:
-			if (!token->toklen)
-				token->toklen = toklen;
-			toklen = 0;
-			while (!stop) {
-				switch (*query) {
-				case SPACE:
-					query++;
-					break;
-				default:
-					stop = true;
-					break;
-				}
-			}
+			/* End the current token and increment the query pointer. */
+			token->toklen = toklen;
+			query++;
 			break;
 		default:
-			if (!token->token)
-				token->token = query;
 
-			if (token->toklen) {
-				token = inc_token(token);
-				token->token = query;
-			}
-
-			if (is_numeric(*token->token)) {
-				if (token->type < NUMBER) token->type = NUMBER;
-			}
-			else
-				token->type = SYMBOL;
-
-			if (*token->token == '-' || *token->token == '+') {
-				const char *num = token->token;
-				if (is_numeric(*(num + 1)) || *(num + 1) == '.') {
+			if (token->type == UNDEFINED) {
+				if (is_numeric(*query))
 					token->type = NUMBER;
-					while(is_numeric(*++num))
-						;
-					if (*num == '.') {
-						token->type = FLOAT;
-					}
-				}
+				else
+					token->type = SYMBOL;
 			}
 
-			if (*query == '"') {
+			switch (*query) {
+			case '-':
+			case '+':
+				if (is_numeric(*(query + 1)) || *(query + 1) == '.') {
+					token->type = NUMBER;
+
+					const char *num = query;
+					while (is_numeric(*++num))
+						;
+					if (*num == '.')
+						token->type = FLOAT;
+				}
+				toklen++;
+				break;
+			case '"':
 				token->type = STRING;
 				query = forward_to_matching_char(query, &toklen, '"');
-				if (!query) {
+				if (!query)
 					die_parser_error("Assertion error: Unmatched double-quote (\")", arena);
-				}
-			}
-
-			if (*query == '\'') {
+				token->toklen = toklen + 1;
+				break;
+			case '\'':
 				token->type = CHAR;
 				query = query + 2;
 				toklen = toklen + 2;
-				if (*query != '\'') {
+				if (*query != '\'')
 					die_parser_error("Assertion error: Invalid use of single-quote (')", arena);
-				}
+				token->toklen = toklen + 1;
+				break;
+			default:
+				toklen++;
 			}
 
-			toklen++; query++;
+			query++;
 		}
 	}
 	if (!token->toklen) token->toklen = toklen;

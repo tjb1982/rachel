@@ -5,49 +5,61 @@
 #include <stdint.h>
 #include "parser.h"
 
-const char *normalize_tests[] = {
-	"x", "x",
-	"\"x\"", "\"x\"",
-	"\"x.y.z().()\"", "\"x.y.z().()\"",
-	"\"x.y.z().()\"", "\"x.y.z().()\"",
-	"x.y", "y ( x )",
-	"().x", "x ( ( ) )",
-	"x.()", "( ) ( x )",
-	"x.y.()", "( ) ( y ( x ) )",
-	"().x.y", "y ( x ( ( ) ) )",
-	"().()", "( ) ( ( ) )",
-	"x.y.z", "z ( y ( x ) )",
-	"z(x().y)", "z ( y ( x ( ) ) )",
-	"z(x(\"foo\").y)", "z ( y ( x ( \"foo\" ) ) )",
-	"z(x(\"f;oo\").y)", "z ( y ( x ( \"f;oo\" ) ) )",
-	"z;(x(\"f;oo\").y)", "z",
 
-	"1.1 1.2", "1.1  1.2",
-	"buildings(@.appreciationRate.$gte(3.)).$map(@.appreciationRate).$apply($average)",
-	"$apply ( $map ( buildings ( $gte ( appreciationRate ( @ ) 3. ) ) appreciationRate ( @ ) ) $average )",
-
-	"1.$gte(1.01)", "$gte ( 1  1.01 )",
-	"222.2.$gte(223)", "$gte ( 222.2  223 )",
-
-	"buildings(@.appreciationRate.$gte(.01)).$map(@.appreciationRate).$apply($average)",
-	"$apply ( $map ( buildings ( $gte ( appreciationRate ( @ ) .01 ) ) appreciationRate ( @ ) ) $average )",
-
-	"test.buildings(@.marketValue.$gte(200000))",
-	"buildings ( test  $gte ( marketValue ( @ ) 200000 ) )",
-
-	"test.people.$map(@.children.$join(test.people))",
-	"$map ( people ( test ) $join ( children ( @ ) people ( test ) ) )",
-
-	"test.people.$map(test.people.$join(@.children))",
-	"$map ( people ( test ) $join ( people ( test ) children ( @ ) ) )",
-
-	NULL
+struct NormalizeTest {
+	const char *source;
+	const char *expectation;
 };
 
 struct TypeTest {
 	const char *source;
 	enum Type type;
 	int pos;
+};
+
+struct NormalizeTest normalize_tests[] = {
+	{ "x", "x" },
+	{ "\"x\"", "\"x\"" },
+	{ "\"x.y.z().()\"", "\"x.y.z().()\"" },
+	{ "\"x.y.z().()\"", "\"x.y.z().()\"" },
+	{ "x.y", "y,(,x,)" },
+	{ "().x", "x,(,(,),)" },
+	{ "x.()", "(,),(,x,)" },
+	{ "x.y.()", "(,),(,y,(,x,),)" },
+	{ "().x.y", "y,(,x,(,(,),),)" },
+	{ "().()", "(,),(,(,),)" },
+	{ "x.y.z", "z,(,y,(,x,),)" },
+	{ "z(x().y)", "z,(,y,(,x,(,),),)" },
+	{ "z(x(\"foo\").y)", "z,(,y,(,x,(,\"foo\",),),)" },
+	{ "z(x(\"f;oo\").y)", "z,(,y,(,x,(,\"f;oo\",),),)" },
+	{ "z;(x(\"f;oo\").y)", "z" },
+	{ "1.1 1.2", "1.1,1.2" },
+	{ ".1 1.2", ".1,1.2" },
+	{
+		"buildings(@.appreciationRate.$gte(3.)).$map(@.appreciationRate).$apply($average)",
+		"$apply,(,$map,(,buildings,(,$gte,(,appreciationRate,(,@,),3.,),),appreciationRate,(,@,),),$average,)"
+	},
+	{ "1.$gte(1.01)", "$gte,(,1,1.01,)" },
+	{ "222.2.$gte(223)", "$gte,(,222.2,223,)" },
+	{
+		"buildings(@.appreciationRate.$gte(.01)).$map(@.appreciationRate).$apply($average)",
+		"$apply,(,$map,(,buildings,(,$gte,(,appreciationRate,(,@,),.01,),),appreciationRate,(,@,),),$average,)"
+	},
+	{
+		"test.buildings(@.marketValue.$gte(200000))",
+		"buildings,(,test,$gte,(,marketValue,(,@,),200000,),)"
+	},
+	{
+		"test.people.$map(@.children.$join(test.people))",
+		"$map,(,people,(,test,),$join,(,children,(,@,),people,(,test,),),)"
+	},
+	{
+		"test.people.$map(test.people.$join(@.children))",
+		"$map,(,people,(,test,),$join,(,people,(,test,),children,(,@,),),)"
+	},
+	{ "+222.222", "+222.222" },
+	{ "-222", "-222" },
+	{ NULL, NULL }
 };
 
 struct TypeTest type_tests[] = {
@@ -78,22 +90,22 @@ struct TypeTest type_tests[] = {
 };
 
 int
-test_normalize(const char *source, const char *expectation, bool verbose, ArenaOptions *opts)
+test_normalize(struct NormalizeTest test, bool verbose, ArenaOptions *opts)
 {
-	Arena *arena = normalize(tokenize2(source, opts));
+	Arena *arena = normalize(tokenize2(test.source, opts));
 	int ret = 0;
-	const char *result = tokens_to_string2(arena->first, ' ');
+	const char *result = tokens_to_string2(arena->first, ',');
 
-	if (strcmp(result, expectation)) {
+	if (strcmp(result, test.expectation)) {
 		fprintf(stderr,
-			"Fail: %s, %s, %s\n\n",
-			source,
-			expectation,
+			"Fail: %s\n, %s\n, %s\n\n",
+			test.source,
+			test.expectation,
 			result
 		);
 		ret = 1;
 	}
-	else if (verbose) printf("PASS: %s, %s, %s\n", source, expectation, result);
+	else if (verbose) printf("PASS: %s\n, %s\n, %s\n\n", test.source, test.expectation, result);
 
 	if (verbose) print_tokens(arena->first);
 
@@ -123,6 +135,7 @@ int test_parse_type(struct TypeTest test, bool verbose, ArenaOptions *opts)
 			test.type, token->type
 		);
 		write(1, token->token, token->toklen); puts("\n");
+		printf("%s\n", tokens_to_string2(arena->first, ','));
 		ret++;
 	}
 
@@ -145,14 +158,13 @@ test_all(
 	int j = times, failed = 0;
 	while (j--) {
 		int i = 0;
-		while (normalize_tests[i] && normalize_tests[i + 1]) {
+		while (normalize_tests[i].source) {
 			failed += test_normalize(
 				normalize_tests[i],
-				normalize_tests[i+1],
 				verbose,
 				opts
 			);
-			i = i + 2;
+			i++;
 		}
 		i = 0;
 		while (type_tests[i].source != NULL) {
