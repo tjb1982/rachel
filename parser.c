@@ -1,5 +1,20 @@
 #include "parser.h"
 
+const char *types[] = {
+	"syntax",
+	"symbol",
+	"char",
+	"string",
+	"number",
+	"float"
+};
+
+const char *
+type_to_string(enum Type type)
+{
+	return types[type];
+}
+
 int
 abs(int n)
 {
@@ -16,13 +31,13 @@ tokens_to_string(const Token *token)
 const char *
 tokens_to_string2(const Token *token, const char sep)
 {
-	int size = 1;
+	int size = 1, sep_not_null = (sep != '\0');
 	const Token *rewind = token;
 	const char *start;
 	char *buf;
 
 	while (token) {
-		size += token->toklen + (sep != '\0');
+		size += token->toklen + sep_not_null;
 
 		if (
 			token->type >= SYMBOL &&
@@ -46,12 +61,12 @@ tokens_to_string2(const Token *token, const char sep)
 
 		memcpy(buf, token->token, token->toklen);
 		buf += token->toklen;
-		if (sep != '\0') *buf++ = sep;
+		if (sep_not_null) *buf++ = sep;
 
 		token = token->next;
 	}
 	buf[0] = '\0';
-	if (sep != '\0') *--buf = '\0';
+	if (sep_not_null) *--buf = '\0';
 	return start;
 }
 
@@ -307,7 +322,7 @@ splice_token2(Token *remove, Token *prev)
 }
 
 Token *
-splice_token1(Token *remove)
+splice_token(Token *remove)
 {
 	return splice_token2(remove, remove->prev);
 }

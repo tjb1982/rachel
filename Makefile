@@ -13,4 +13,4 @@ racheltest: parser.o
 	clang test.c -o racheltest -g -O3 parser.o -lm
 
 clean:
-	rm -f *.o rachel*
+	rm -rf *.o rachel*

@@ -131,11 +131,13 @@ int test_parse_type(struct TypeTest test, bool verbose, ArenaOptions *opts)
 	}
 	else if (token->type != test.type) {
 		fprintf(stderr,
-			"Fail: Type %i does not match token->type (%i) for token: ",
-			test.type, token->type
+			"--> %s\nFail: Type %s does not match token->type (%s) for token: ",
+			test.source, type_to_string(test.type), type_to_string(token->type)
 		);
 		write(1, token->token, token->toklen); puts("\n");
-		printf("%s\n", tokens_to_string2(arena->first, ','));
+		const char *token_string = tokens_to_string2(arena->first, ',');
+		printf("%s\n", token_string);
+		free((void *)token_string);
 		ret++;
 	}
 

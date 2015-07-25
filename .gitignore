@@ -1,7 +1,7 @@
 *.swp
 *.swo
 *.o
-
+.dlqtemp
 dlq
 dlq.debug
 dlqtest
