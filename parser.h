@@ -35,6 +35,11 @@ enum Type {
 	FLOAT
 };
 
+extern const char *types[];
+
+const char *
+type_to_string(enum Type type);
+
 typedef struct Token {
 	const char *token;
 	int toklen;
@@ -69,7 +74,6 @@ typedef struct Expression {
 	struct Expression *child;
 	struct Expression *sibling;
 } Expression;
-
 
 int
 abs(int n);
