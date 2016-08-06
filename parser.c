@@ -188,13 +188,17 @@ inc_factor(const Arena *arena)
 Token *
 new_token(Arena *arena)
 {
-	if (arena->numTokens == arena->opts->BUFFSIZE * arena->opts->inc_factor(arena)) {
-		if (arena->numAllocs == arena->opts->MAXALLOCS) die_parser_error(
-			"Maximum allocations reached. Aborting.",
-			arena
-		);
+	if (arena->numTokens == arena->opts->BUFFSIZE *
+			arena->opts->inc_factor(arena)) {
+		if (arena->numAllocs == arena->opts->MAXALLOCS)
+			die_parser_error(
+				"Maximum allocations reached. Aborting.",
+				arena
+			);
 		arena->multiplier++;
-		printf("alloc %i: %li tokens\n", arena->multiplier, arena->totalNumTokens);
+		printf("alloc %i: %li tokens\n",
+				arena->multiplier,
+				arena->totalNumTokens);
 		fflush(stdout);
 		arena->tptr = arena->allocs[arena->numAllocs++] = malloc(
 			sizeof(Token) *
@@ -392,7 +396,8 @@ new_arena_options(
 		.BUFFSIZE = buffsize,
 		.MAXALLOCS = maxallocs,
 		.EXPONENT = exponent,
-		.inc_factor = custom_inc_factor ? custom_inc_factor : inc_factor
+		.inc_factor = custom_inc_factor ?
+			custom_inc_factor : inc_factor
 	};
 	ArenaOptions *dest = malloc(sizeof (ArenaOptions));
 	memcpy(dest, &opts, sizeof *dest);
@@ -406,7 +411,7 @@ new_arena(const ArenaOptions *opts)
 	arena->multiplier = 1;
 	arena->numAllocs = arena->numTokens = arena->totalNumTokens = 0;
 	arena->opts = opts;
-	arena->allocs = malloc(opts->MAXALLOCS * sizeof (size_t));
+	arena->allocs = malloc(opts->MAXALLOCS * sizeof (Token**));
 
 	return arena;
 }
